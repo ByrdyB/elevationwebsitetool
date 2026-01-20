@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KML Elevation Viewer</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f3f4f6;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            grid-template-rows: 1fr 250px;
+            height: 100vh;
+            gap: 0;
+        }
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 250px auto auto;
+                height: auto;
+                min-height: 100vh;
+            }
+        }
+        .left-toolbar {
+            grid-column: 1;
+            grid-row: 1;
+            background: white;
+            border-right: 1px solid #e5e7eb;
+            padding: 16px;
+            overflow-y: auto;
+            width: 250px;
+            transition: width 0.3s, padding 0.3s;
+        }
+        .left-toolbar.collapsed {
+            width: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        @media (max-width: 768px) {
+            .left-toolbar {
+                grid-column: 1;
+                grid-row: 3;
+                width: 100%;
+                border-right: none;
+                border-top: 1px solid #e5e7eb;
+            }
+            .left-toolbar.collapsed {
+                width: 100%;
+                padding: 16px;
+            }
+        }
+        .map-container {
+            grid-column: 2;
+            grid-row: 1;
+            background: white;
+            position: relative;
+        }
+        @media (max-width: 768px) {
+            .map-container {
+                grid-column: 1;
+                grid-row: 1;
+                min-height: 400px;
+            }
+        }
+        .right-toolbar {
+            grid-column: 3;
+            grid-row: 1;
+            background: white;
+            border-left: 1px solid #e5e7eb;
+            padding: 16px;
+            overflow-y: auto;
+            width: 280px;
+            transition: width 0.3s, padding 0.3s;
+        }
+        .right-toolbar.collapsed {
+            width: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        @media (max-width: 768px) {
+            .right-toolbar {
+                grid-column: 1;
+                grid-row: 4;
+                width: 100%;
+                border-left: none;
+                border-top: 1px solid #e5e7eb;
+            }
+            .right-toolbar.collapsed {
+                width: 100%;
+                padding: 16px;
+            }
+        }
+        .chart-container {
+            grid-column: 1 / 4;
+            grid-row: 2;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            padding: 8px;
+            overflow: hidden;
+            position: relative;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                grid-column: 1;
+                grid-row: 2;
+                min-height: 200px;
+            }
+        }
+        .toggle-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            width: 28px;
+            height: 60px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            font-size: 16px;
+            color: #374151;
+        }
+        .toggle-btn:hover {
+            background: #f3f4f6;
+        }
+        .toggle-left {
+            left: 0;
+            border-left: none;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+        }
+        .toggle-right {
+            right: 0;
+            border-right: none;
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+        @media (max-width: 768px) {
+            .toggle-btn {
+                display: none;
+            }
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        .upload-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            margin-bottom: 16px;
+        }
+        .upload-btn:hover {
+            background: #1d4ed8;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            margin-top: 20px;
+        }
+        .section-title:first-child {
+            margin-top: 0;
+        }
+        .units-toggle {
+            display: none;
+            background: #f3f4f6;
+            border-radius: 8px;
+            padding: 4px;
+            margin-bottom: 20px;
+        }
+        .units-toggle.visible {
+            display: flex;
+        }
+        .unit-btn {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            background: transparent;
+            color: #374151;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .unit-btn.active {
+            background: #2563eb;
+            color: white;
+        }
+        .info-item {
+            margin-bottom: 12px;
+        }
+        .info-label {
+            font-size: 11px;
+            color: #6b7280;
+            margin-bottom: 3px;
+        }
+        .info-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        .status {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 12px;
+        }
+        .divider {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 16px 0;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            max-width: 400px;
+            width: 90%;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 16px;
+        }
+        .modal-text {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 24px;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .modal-btn.primary {
+            background: #2563eb;
+            color: white;
+        }
+        .modal-btn.primary:hover {
+            background: #1d4ed8;
+        }
+        .modal-btn.secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        .modal-btn.secondary:hover {
+            background: #e5e7eb;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .info-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .line-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #f9fafb;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .line-item:hover {
+            background: #f3f4f6;
+        }
+        .line-item.active {
+            background: #eff6ff;
+            border-color: #2563eb;
+        }
+        .line-item-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+        .line-item-info {
+            font-size: 11px;
+            color: #6b7280;
+        }
+        .context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 4px;
+            z-index: 2000;
+            display: none;
+            min-width: 150px;
+        }
+        .context-menu.active {
+            display: block;
+        }
+        .context-menu-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #374151;
+            cursor: pointer;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        .context-menu-item:hover {
+            background: #f3f4f6;
+        }
+        .context-menu-item.danger:hover {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+        .selection-overlay {
+            position: absolute;
+            background: rgba(37, 99, 235, 0.3);
+            border: 2px solid #2563eb;
+            border-radius: 4px;
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+        }
+        .measure-line {
+            position: absolute;
+            pointer-events: none;
+            z-index: 11;
+        }
+        .measure-point {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #10b981;
+            border: 2px solid white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 12;
+        }
+        .measure-info {
+            position: absolute;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            pointer-events: none;
+            z-index: 13;
+            white-space: nowrap;
+        }
+        .measure-info-label {
+            color: #6b7280;
+            margin-right: 4px;
+        }
+        .measure-info-value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #9ca3af;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        .empty-state-text {
+            font-size: 14px;
+            color: #9ca3af;
+            max-width: 400px;
+        }
+        .empty-state-small {
+            font-size: 13px;
+            color: #9ca3af;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-toolbar" id="leftToolbar">
+            <label class="upload-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                </svg>
+                <span>Upload KML</span>
+                <input type="file" accept=".kml" onchange="handleFileUpload(event)" style="display: none;">
+            </label>
+
+            <div class="section-title">Lines</div>
+            <div id="linesList">
+                <div class="empty-state-small">Your lines will appear here.<br>Right-click to rename or delete.</div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <button class="toggle-btn toggle-left" onclick="toggleLeftToolbar()">
+                <span id="leftToggleIcon">◀</span>
+            </button>
+            <button class="toggle-btn toggle-right" onclick="toggleRightToolbar()">
+                <span id="rightToggleIcon">▶</span>
+            </button>
+            <div id="map"></div>
+        </div>
+
+        <div class="right-toolbar" id="rightToolbar">
+            <div id="status" class="status"></div>
+
+            <div id="unitsToggle" class="units-toggle">
+                <button class="unit-btn active" onclick="setUnits('feet')">Feet</button>
+                <button class="unit-btn" onclick="setUnits('meters')">Meters</button>
+            </div>
+
+            <div id="pointInfo">
+                <div class="section-title">Point Information</div>
+                <div class="info-item">
+                    <div class="info-label">Name</div>
+                    <div class="info-value" id="nameValue">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Description</div>
+                    <div class="info-value" id="descValue">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Point</div>
+                    <div class="info-value" id="pointNumber">-</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-item">
+                        <div class="info-label">Code</div>
+                        <div class="info-value" id="codeValue">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Code Description</div>
+                        <div class="info-value" id="codeDescValue">-</div>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-item">
+                        <div class="info-label">Latitude</div>
+                        <div class="info-value" id="latValue">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Longitude</div>
+                        <div class="info-value" id="lngValue">-</div>
+                    </div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Elevation</div>
+                    <div class="info-value" id="elevValue">-</div>
+                </div>
+                
+                <div class="divider"></div>
+                <div class="section-title">GPS Status</div>
+                
+                <div class="info-row">
+                    <div class="info-item">
+                        <div class="info-label">Solution Status</div>
+                        <div class="info-value" id="solutionStatus">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Correction Type</div>
+                        <div class="info-value" id="correctionType">-</div>
+                    </div>
+                </div>
+                
+                <div class="divider"></div>
+                <div class="section-title">Satellites</div>
+                
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">GPS</div>
+                        <div class="info-value" id="gpsSats">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">GLONASS</div>
+                        <div class="info-value" id="glonassSats">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Galileo</div>
+                        <div class="info-value" id="galileoSats">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">BeiDou</div>
+                        <div class="info-value" id="beidouSats">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div id="chartEmptyState" class="empty-state">
+                <div class="empty-state-title">Elevation Profile</div>
+                <div class="empty-state-text">Your elevation data will be displayed here. Upload a KML file using the button in the top left to get started.</div>
+            </div>
+            <svg id="chartSvg" width="100%" height="100%" style="cursor: crosshair;"></svg>
+            <div id="selectionOverlay" class="selection-overlay"></div>
+            <div id="measureOverlay"></div>
+        </div>
+    </div>
+
+    <div id="unitsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">Select Input Units</div>
+            <div class="modal-text">What units are the elevation values in your KML file?</div>
+            <div class="modal-buttons">
+                <button class="modal-btn primary" onclick="selectInputUnits('feet')">Feet</button>
+                <button class="modal-btn secondary" onclick="selectInputUnits('meters')">Meters</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="renameModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">Rename Line</div>
+            <input type="text" id="renameInput" class="modal-input" placeholder="Enter new name">
+            <div class="modal-buttons">
+                <button class="modal-btn secondary" onclick="closeRenameModal()">Cancel</button>
+                <button class="modal-btn primary" onclick="confirmRename()">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="contextMenu" class="context-menu">
+        <div class="context-menu-item" onclick="measureSelection()">Measure</div>
+        <div class="context-menu-item" onclick="splitSelection()">Split Selection</div>
+        <div class="context-menu-item danger" onclick="deleteSelection()">Delete Selection</div>
+    </div>
+
+    <div id="lineContextMenu" class="context-menu">
+        <div class="context-menu-item" onclick="renameLineAction()">Rename</div>
+        <div class="context-menu-item danger" onclick="deleteLineAction()">Delete</div>
+    </div>
+
+    <script>
+        var map;
+        var marker;
+        var polylines = {};
+        var selectionPolyline = null;
+        var lines = [];
+        var activeLineId = null;
+        var inputUnits = 'feet';
+        var displayUnits = 'feet';
+        var hoveredIndex = null;
+        var selectedIndex = null;
+        var pendingKmlText = null;
+        var selectionStart = null;
+        var selectionEnd = null;
+        var isSelecting = false;
+        var isDragging = false;
+        var lineIdCounter = 0;
+        var contextLineId = null;
+        var measureMode = false;
+        var measureStart = null;
+        var measureEnd = null;
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 0, lng: 0 },
+                zoom: 2,
+                mapTypeId: 'satellite'
+            });
+        }
+
+        function toggleLeftToolbar() {
+            var toolbar = document.getElementById('leftToolbar');
+            var icon = document.getElementById('leftToggleIcon');
+            toolbar.classList.toggle('collapsed');
+            icon.textContent = toolbar.classList.contains('collapsed') ? '▶' : '◀';
+        }
+
+        function toggleRightToolbar() {
+            var toolbar = document.getElementById('rightToolbar');
+            var icon = document.getElementById('rightToggleIcon');
+            toolbar.classList.toggle('collapsed');
+            icon.textContent = toolbar.classList.contains('collapsed') ? '◀' : '▶';
+        }
+
+        function parseKML(text) {
+            var parser = new DOMParser();
+            var xml = parser.parseFromString(text, 'text/xml');
+            
+            var parseError = xml.querySelector('parsererror');
+            if (parseError) {
+                console.error('XML Parse Error:', parseError.textContent);
+                return null;
+            }
+
+            var points = [];
+            var placemarks = xml.querySelectorAll('Placemark');
+            
+            placemarks.forEach(function(placemark) {
+                var coordElement = placemark.querySelector('Point coordinates');
+                if (!coordElement) return;
+                
+                var coordText = coordElement.textContent.trim();
+                var coords = coordText.split(',').map(Number);
+                var lng = coords[0];
+                var lat = coords[1];
+                var elevation = coords[2];
+                
+                if (isNaN(lat) || isNaN(lng) || isNaN(elevation)) return;
+                
+                var point = { lat: lat, lng: lng, elevation: elevation };
+                
+                var nameElement = placemark.querySelector('name');
+                if (nameElement) {
+                    point.name = nameElement.textContent;
+                }
+                
+                var descElement = placemark.querySelector('description');
+                if (descElement) {
+                    point.description = descElement.textContent;
+                }
+                
+                var schemaData = placemark.querySelector('SchemaData');
+                if (schemaData) {
+                    var simpleDataElements = schemaData.querySelectorAll('SimpleData');
+                    simpleDataElements.forEach(function(sd) {
+                        var name = sd.getAttribute('name');
+                        var value = sd.textContent;
+                        point[name] = value;
+                    });
+                }
+                
+                points.push(point);
+            });
+
+            return points.length > 0 ? points : null;
+        }
+
+        function handleFileUpload(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                pendingKmlText = e.target.result;
+                document.getElementById('unitsModal').classList.add('active');
+            };
+            reader.readAsText(file);
+        }
+
+        function selectInputUnits(units) {
+            inputUnits = units;
+            document.getElementById('unitsModal').classList.remove('active');
+            
+            var points = parseKML(pendingKmlText);
+            if (points && points.length > 0) {
+                var lineId = 'line_' + lineIdCounter++;
+                lines.push({
+                    id: lineId,
+                    name: 'Line 1',
+                    data: points
+                });
+                activeLineId = lineId;
+                
+                document.getElementById('status').textContent = 'Loaded ' + points.length + ' points';
+                document.getElementById('unitsToggle').classList.add('visible');
+                document.getElementById('chartEmptyState').style.display = 'none';
+                
+                updateLinesList();
+                updateMap();
+                renderChart();
+                if (points.length > 0) {
+                    selectedIndex = 0;
+                    updatePointInfo();
+                }
+            } else {
+                alert('No valid coordinate points found in KML file.');
+            }
+            
+            pendingKmlText = null;
+        }
+
+        function getActiveLine() {
+            return lines.find(function(l) { return l.id === activeLineId; });
+        }
+
+        function updateLinesList() {
+            var html = '';
+            if (lines.length === 0) {
+                html = '<div class="empty-state-small">Your lines will appear here.<br>Right-click to rename or delete.</div>';
+            } else {
+                lines.forEach(function(line) {
+                    var activeClass = line.id === activeLineId ? 'active' : '';
+                    html += '<div class="line-item ' + activeClass + '" onclick="switchToLine(\'' + line.id + '\')" oncontextmenu="showLineContextMenu(event, \'' + line.id + '\')">';
+                    html += '<div class="line-item-name">' + line.name + '</div>';
+                    html += '<div class="line-item-info">' + line.data.length + ' points</div>';
+                    html += '</div>';
+                });
+            }
+            document.getElementById('linesList').innerHTML = html;
+        }
+
+        function showLineContextMenu(e, lineId) {
+            e.preventDefault();
+            e.stopPropagation();
+            contextLineId = lineId;
+            var menu = document.getElementById('lineContextMenu');
+            
+            var x = e.clientX;
+            var y = e.clientY;
+            
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+            menu.classList.add('active');
+            
+            var actualMenuRect = menu.getBoundingClientRect();
+            
+            if (actualMenuRect.right > window.innerWidth) {
+                x = window.innerWidth - actualMenuRect.width - 10;
+            }
+            if (actualMenuRect.bottom > window.innerHeight) {
+                y = window.innerHeight - actualMenuRect.height - 10;
+            }
+            if (x < 10) x = 10;
+            if (y < 10) y = 10;
+            
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+        }
+
+        function renameLineAction() {
+            hideContextMenu();
+            document.getElementById('renameModal').classList.add('active');
+            var line = lines.find(function(l) { return l.id === contextLineId; });
+            document.getElementById('renameInput').value = line.name;
+            document.getElementById('renameInput').focus();
+        }
+
+        function confirmRename() {
+            var newName = document.getElementById('renameInput').value.trim();
+            if (newName) {
+                var line = lines.find(function(l) { return l.id === contextLineId; });
+                if (line) {
+                    line.name = newName;
+                    updateLinesList();
+                }
+            }
+            closeRenameModal();
+        }
+
+        function closeRenameModal() {
+            document.getElementById('renameModal').classList.remove('active');
+            contextLineId = null;
+        }
+
+        function deleteLineAction() {
+            hideContextMenu();
+            lines = lines.filter(function(l) { return l.id !== contextLineId; });
+            if (activeLineId === contextLineId) {
+                activeLineId = lines.length > 0 ? lines[0].id : null;
+            }
+            contextLineId = null;
+            updateLinesList();
+            updateMap();
+            renderChart();
+            if (activeLineId) {
+                selectedIndex = 0;
+                updatePointInfo();
+            }
+        }
+
+        function switchToLine(lineId) {
+            activeLineId = lineId;
+            selectedIndex = 0;
+            hoveredIndex = null;
+            selectionStart = null;
+            selectionEnd = null;
+            measureMode = false;
+            measureStart = null;
+            measureEnd = null;
+            clearMeasure();
+            updateLinesList();
+            updateMap();
+            renderChart();
+            updatePointInfo();
+        }
+
+        function updateMap() {
+            if (!map) return;
+
+            Object.keys(polylines).forEach(function(key) {
+                polylines[key].setMap(null);
+            });
+            polylines = {};
+
+            if (marker) {
+                marker.setMap(null);
+                marker = null;
+            }
+
+            var activeLine = getActiveLine();
+            if (!activeLine) return;
+
+            var bounds = new google.maps.LatLngBounds();
+            
+            var path = activeLine.data.map(function(p) { return { lat: p.lat, lng: p.lng }; });
+            var polyline = new google.maps.Polyline({
+                path: path,
+                geodesic: true,
+                strokeColor: '#FF0000',
+                strokeOpacity: 1.0,
+                strokeWeight: 3
+            });
+            polyline.setMap(map);
+            polylines[activeLine.id] = polyline;
+            
+            path.forEach(function(p) { bounds.extend(p); });
+
+            if (activeLine.data.length > 0) {
+                marker = new google.maps.Marker({
+                    map: map,
+                    position: path[0],
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: '#4CAF50',
+                        fillOpacity: 1,
+                        strokeColor: '#fff',
+                        strokeWeight: 2
+                    }
+                });
+            }
+
+            map.fitBounds(bounds);
+        }
+
+        function updateMarkerPosition(index) {
+            if (!marker) return;
+            var activeLine = getActiveLine();
+            if (!activeLine || index === null || index >= activeLine.data.length) return;
+            var point = activeLine.data[index];
+            marker.setPosition({ lat: point.lat, lng: point.lng });
+        }
+
+        function convertElevation(elevation) {
+            if (inputUnits === displayUnits) {
+                return elevation;
+            }
+            if (inputUnits === 'meters' && displayUnits === 'feet') {
+                return elevation * 3.28084;
+            }
+            if (inputUnits === 'feet' && displayUnits === 'meters') {
+                return elevation / 3.28084;
+            }
+            return elevation;
+        }
+
+        function getElevationUnit() {
+            return displayUnits === 'feet' ? 'ft' : 'm';
+        }
+
+        function setUnits(unit) {
+            displayUnits = unit;
+            var buttons = document.querySelectorAll('.unit-btn');
+            buttons.forEach(function(btn) {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            renderChart();
+            updatePointInfo();
+            if (measureMode && measureStart !== null && measureEnd !== null) {
+                showMeasurement();
+            }
+        }
+
+        function updatePointInfo() {
+            var activeLine = getActiveLine();
+            if (!activeLine) return;
+            
+            var displayIndex = hoveredIndex !== null ? hoveredIndex : selectedIndex;
+            if (displayIndex === null || displayIndex >= activeLine.data.length) return;
+            
+            var point = activeLine.data[displayIndex];
+            document.getElementById('nameValue').textContent = point.name || '-';
+            document.getElementById('descValue').textContent = point.description || '-';
+            document.getElementById('pointNumber').textContent = (displayIndex + 1) + ' of ' + activeLine.data.length;
+            document.getElementById('latValue').textContent = point.lat.toFixed(6) + '°';
+            document.getElementById('lngValue').textContent = point.lng.toFixed(6) + '°';
+            document.getElementById('elevValue').textContent = convertElevation(point.elevation).toFixed(3) + ' ' + getElevationUnit();
+            
+            document.getElementById('codeValue').textContent = point.Code || '-';
+            document.getElementById('codeDescValue').textContent = point['Code description'] || '-';
+            document.getElementById('solutionStatus').textContent = point['Solution status'] || '-';
+            document.getElementById('correctionType').textContent = point['Correction type'] || '-';
+            document.getElementById('gpsSats').textContent = point['GPS Satellites'] || '-';
+            document.getElementById('glonassSats').textContent = point['GLONASS Satellites'] || '-';
+            document.getElementById('galileoSats').textContent = point['Galileo Satellites'] || '-';
+            document.getElementById('beidouSats').textContent = point['BeiDou Satellites'] || '-';
+        }
+
+        function renderChart() {
+            var activeLine = getActiveLine();
+            if (!activeLine || activeLine.data.length === 0) return;
+
+            var elevations = activeLine.data.map(function(p) { return convertElevation(p.elevation); });
+            var maxElev = Math.max.apply(null, elevations);
+            var minElev = Math.min.apply(null, elevations);
+            var range = maxElev - minElev || 1;
+
+            var svg = document.getElementById('chartSvg');
+            var rect = svg.getBoundingClientRect();
+            var width = rect.width;
+            var height = rect.height;
+            var padding = 40;
+
+            svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+
+            var svgContent = '';
+
+            for (var i = 0; i <= 4; i++) {
+                var frac = i / 4;
+                var y = height - padding - frac * (height - 2 * padding);
+                var elev = (minElev + frac * range).toFixed(1);
+                svgContent += '<line x1="' + padding + '" y1="' + y + '" x2="' + (width - padding) + '" y2="' + y + '" stroke="#ddd" stroke-width="1"/>';
+                svgContent += '<text x="' + (padding - 5) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#666">' + elev + getElevationUnit() + '</text>';
+            }
+
+            var pointsStr = elevations.map(function(elev, i) {
+                var x = padding + (i / (activeLine.data.length - 1)) * (width - 2 * padding);
+                var y = height - padding - ((elev - minElev) / range) * (height - 2 * padding);
+                return x + ',' + y;
+            }).join(' ');
+
+            svgContent += '<polyline points="' + pointsStr + '" fill="none" stroke="#2563eb" stroke-width="2"/>';
+            svgContent += '<polygon points="' + padding + ',' + (height - padding) + ' ' + pointsStr + ' ' + (width - padding) + ',' + (height - padding) + '" fill="rgba(37, 99, 235, 0.1)"/>';
+
+            var displayIndex = hoveredIndex !== null ? hoveredIndex : selectedIndex;
+            if (displayIndex !== null) {
+                var x = padding + (displayIndex / (activeLine.data.length - 1)) * (width - 2 * padding);
+                svgContent += '<line x1="' + x + '" y1="' + padding + '" x2="' + x + '" y2="' + (height - padding) + '" stroke="#4CAF50" stroke-width="2" stroke-dasharray="4"/>';
+            }
+
+            svg.innerHTML = svgContent;
+        }
+
+        function getIndexFromX(x) {
+            var activeLine = getActiveLine();
+            if (!activeLine) return null;
+            
+            var svg = document.getElementById('chartSvg');
+            var rect = svg.getBoundingClientRect();
+            var padding = 40;
+            var chartWidth = rect.width - 2 * padding;
+            var relativeX = x - rect.left - padding;
+            
+            if (relativeX < 0) relativeX = 0;
+            if (relativeX > chartWidth) relativeX = chartWidth;
+            
+            var fraction = relativeX / chartWidth;
+            var index = Math.round(fraction * (activeLine.data.length - 1));
+            
+            return index;
+        }
+
+        function handleChartMouseDown(e) {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            
+            var index = getIndexFromX(e.clientX);
+            console.log('Mouse down at index:', index);
+            
+            isSelecting = true;
+            isDragging = false;
+            selectionStart = index;
+            selectionEnd = index;
+            console.log('Selection started - start:', selectionStart, 'end:', selectionEnd);
+        }
+
+        function handleChartMouseMove(e) {
+            var activeLine = getActiveLine();
+            if (!activeLine) return;
+            
+            var index = getIndexFromX(e.clientX);
+            
+            if (isSelecting) {
+                isDragging = true;
+                selectionEnd = index;
+                updateSelection();
+            } else {
+                if (index >= 0 && index < activeLine.data.length) {
+                    hoveredIndex = index;
+                    updateMarkerPosition(index);
+                    renderChart();
+                    updatePointInfo();
+                }
+            }
+        }
+
+        function handleChartMouseUp(e) {
+            var activeLine = getActiveLine();
+            if (!activeLine) return;
+            
+            var index = getIndexFromX(e.clientX);
+            console.log('Mouse up at index:', index, 'isDragging:', isDragging);
+            
+            if (isSelecting) {
+                selectionEnd = index;
+                console.log('Mouse up - selection:', selectionStart, 'to', selectionEnd);
+                
+                if (Math.abs(selectionEnd - selectionStart) > 0) {
+                    console.log('Valid selection, calling updateSelection');
+                    updateSelection();
+                } else {
+                    console.log('Single click, clearing selection');
+                    selectedIndex = index;
+                    hoveredIndex = null;
+                    selectionStart = null;
+                    selectionEnd = null;
+                    updateMarkerPosition(index);
+                    renderChart();
+                    updatePointInfo();
+                    hideSelection();
+                    clearMapSelection();
+                    clearMeasure();
+                }
+            }
+            
+            isSelecting = false;
+            isDragging = false;
+        }
+
+        function handleChartContextMenu(e) {
+            e.preventDefault();
+            
+            if (selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd) {
+                var menu = document.getElementById('contextMenu');
+                var menuRect = menu.getBoundingClientRect();
+                
+                var x = e.clientX;
+                var y = e.clientY;
+                
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+                menu.classList.add('active');
+                
+                var actualMenuRect = menu.getBoundingClientRect();
+                
+                if (actualMenuRect.right > window.innerWidth) {
+                    x = window.innerWidth - actualMenuRect.width - 10;
+                }
+                if (actualMenuRect.bottom > window.innerHeight) {
+                    y = window.innerHeight - actualMenuRect.height - 10;
+                }
+                if (x < 10) x = 10;
+                if (y < 10) y = 10;
+                
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+            }
+        }
+
+        function updateSelection() {
+            console.log('updateSelection called - start:', selectionStart, 'end:', selectionEnd);
+            
+            if (selectionStart === null || selectionEnd === null) {
+                console.log('updateSelection - null values, hiding');
+                hideSelection();
+                return;
+            }
+
+            var activeLine = getActiveLine();
+            if (!activeLine) {
+                console.log('updateSelection - no active line');
+                return;
+            }
+
+            var chartContainer = document.querySelector('.chart-container');
+            var containerRect = chartContainer.getBoundingClientRect();
+            var svg = document.getElementById('chartSvg');
+            var svgRect = svg.getBoundingClientRect();
+            var padding = 40;
+            var chartWidth = svgRect.width - 2 * padding;
+            var chartHeight = svgRect.height - 2 * padding;
+            
+            var startIdx = Math.min(selectionStart, selectionEnd);
+            var endIdx = Math.max(selectionStart, selectionEnd);
+            
+            console.log('Selection indices:', startIdx, 'to', endIdx);
+            
+            var startX = (startIdx / (activeLine.data.length - 1)) * chartWidth;
+            var endX = (endIdx / (activeLine.data.length - 1)) * chartWidth;
+            
+            var relativeLeft = (svgRect.left - containerRect.left) + padding + startX;
+            var relativeTop = (svgRect.top - containerRect.top) + padding;
+            
+            console.log('Selection box position (relative) - left:', relativeLeft, 'top:', relativeTop, 'width:', (endX - startX), 'height:', chartHeight);
+            
+            var overlay = document.getElementById('selectionOverlay');
+            overlay.style.display = 'block';
+            overlay.style.left = relativeLeft + 'px';
+            overlay.style.top = relativeTop + 'px';
+            overlay.style.width = (endX - startX) + 'px';
+            overlay.style.height = chartHeight + 'px';
+            
+            console.log('Selection overlay display style:', overlay.style.display);
+            
+            updateMapSelection(startIdx, endIdx);
+        }
+
+        function updateMapSelection(startIdx, endIdx) {
+            if (selectionPolyline) {
+                selectionPolyline.setMap(null);
+                selectionPolyline = null;
+            }
+
+            var activeLine = getActiveLine();
+            if (!activeLine || startIdx === null || endIdx === null) return;
+
+            var selectedSegment = activeLine.data.slice(startIdx, endIdx + 1);
+            var path = selectedSegment.map(function(p) { return { lat: p.lat, lng: p.lng }; });
+            
+            selectionPolyline = new google.maps.Polyline({
+                path: path,
+                geodesic: true,
+                strokeColor: '#2563eb',
+                strokeOpacity: 1.0,
+                strokeWeight: 5,
+                zIndex: 1000
+            });
+            selectionPolyline.setMap(map);
+        }
+
+        function hideSelection() {
+            console.log('hideSelection called');
+            var overlay = document.getElementById('selectionOverlay');
+            overlay.style.display = 'none';
+            console.log('Selection overlay hidden');
+        }
+        
+        function clearMapSelection() {
+            if (selectionPolyline) {
+                selectionPolyline.setMap(null);
+                selectionPolyline = null;
+            }
+        }
+
+        function splitSelection() {
+            var activeLine = getActiveLine();
+            if (!activeLine || selectionStart === null || selectionEnd === null) return;
+            
+            var startIdx = Math.min(selectionStart, selectionEnd);
+            var endIdx = Math.max(selectionStart, selectionEnd);
+            
+            var splitData = activeLine.data.slice(startIdx, endIdx + 1);
+            var newLineId = 'line_' + lineIdCounter++;
+            var newLineName = 'Line ' + (lines.length + 1);
+            
+            lines.push({
+                id: newLineId,
+                name: newLineName,
+                data: splitData
+            });
+            
+            activeLine.data.splice(startIdx, endIdx - startIdx + 1);
+            
+            if (activeLine.data.length === 0) {
+                lines = lines.filter(function(l) { return l.id !== activeLine.id; });
+                activeLineId = newLineId;
+            }
+            
+            selectionStart = null;
+            selectionEnd = null;
+            selectedIndex = 0;
+            hoveredIndex = null;
+            
+            hideContextMenu();
+            hideSelection();
+            clearMapSelection();
+            updateLinesList();
+            updateMap();
+            renderChart();
+            updatePointInfo();
+        }
+
+        function deleteSelection() {
+            var activeLine = getActiveLine();
+            if (!activeLine || selectionStart === null || selectionEnd === null) return;
+            
+            var startIdx = Math.min(selectionStart, selectionEnd);
+            var endIdx = Math.max(selectionStart, selectionEnd);
+            
+            activeLine.data.splice(startIdx, endIdx - startIdx + 1);
+            
+            if (activeLine.data.length === 0) {
+                lines = lines.filter(function(l) { return l.id !== activeLine.id; });
+                if (lines.length > 0) {
+                    activeLineId = lines[0].id;
+                } else {
+                    activeLineId = null;
+                }
+            }
+            
+            selectionStart = null;
+            selectionEnd = null;
+            selectedIndex = 0;
+            hoveredIndex = null;
+            
+            hideContextMenu();
+            hideSelection();
+            clearMapSelection();
+            updateLinesList();
+            updateMap();
+            renderChart();
+            updatePointInfo();
+        }
+
+        function measureSelection() {
+            if (selectionStart === null || selectionEnd === null) return;
+            console.log('measureSelection called - hiding blue box but keeping map highlight');
+            hideContextMenu();
+            
+            measureStart = Math.min(selectionStart, selectionEnd);
+            measureEnd = Math.max(selectionStart, selectionEnd);
+            
+            console.log('Measuring selection from', measureStart, 'to', measureEnd);
+            
+            hideSelection();
+            
+            showMeasurement();
+        }
+
+        function clearMeasure() {
+            document.getElementById('measureOverlay').innerHTML = '';
+            measureStart = null;
+            measureEnd = null;
+        }
+
+        function showMeasurement() {
+            console.log('showMeasurement called');
+            var activeLine = getActiveLine();
+            if (!activeLine || measureStart === null || measureEnd === null) {
+                console.log('showMeasurement - missing data:', activeLine, measureStart, measureEnd);
+                return;
+            }
+
+            console.log('Measuring from index', measureStart, 'to', measureEnd);
+
+            var chartContainer = document.querySelector('.chart-container');
+            var containerRect = chartContainer.getBoundingClientRect();
+            console.log('Container rect:', containerRect);
+            
+            var svg = document.getElementById('chartSvg');
+            var svgRect = svg.getBoundingClientRect();
+            console.log('SVG rect:', svgRect);
+            
+            var padding = 40;
+            var chartWidth = svgRect.width - 2 * padding;
+            var chartHeight = svgRect.height - 2 * padding;
+
+            var point1 = activeLine.data[measureStart];
+            var point2 = activeLine.data[measureEnd];
+
+            var elev1 = convertElevation(point1.elevation);
+            var elev2 = convertElevation(point2.elevation);
+            var elevDiff = Math.abs(elev2 - elev1);
+
+            function toRadians(deg) {
+                return deg * Math.PI / 180;
+            }
+
+            function haversineDistance(lat1, lng1, lat2, lng2) {
+                var R = 6371000;
+                var dLat = toRadians(lat2 - lat1);
+                var dLng = toRadians(lng2 - lng1);
+                var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                        Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                        Math.sin(dLng/2) * Math.sin(dLng/2);
+                var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return R * c;
+            }
+
+            var totalDistance = 0;
+            for (var i = measureStart; i < measureEnd; i++) {
+                var p1 = activeLine.data[i];
+                var p2 = activeLine.data[i + 1];
+                totalDistance += haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+            }
+
+            var distanceUnit = displayUnits === 'feet' ? 'ft' : 'm';
+            var distanceValue = displayUnits === 'feet' ? totalDistance * 3.28084 : totalDistance;
+
+            var startX = (measureStart / (activeLine.data.length - 1)) * chartWidth;
+            var endX = (measureEnd / (activeLine.data.length - 1)) * chartWidth;
+            
+            var x1 = (svgRect.left - containerRect.left) + padding + startX;
+            var x2 = (svgRect.left - containerRect.left) + padding + endX;
+
+            console.log('x1:', x1, 'x2:', x2);
+
+            var elevations = activeLine.data.map(function(p) { return convertElevation(p.elevation); });
+            var maxElev = Math.max.apply(null, elevations);
+            var minElev = Math.min.apply(null, elevations);
+            var range = maxElev - minElev || 1;
+
+            var y1Offset = ((elev1 - minElev) / range) * chartHeight;
+            var y2Offset = ((elev2 - minElev) / range) * chartHeight;
+            
+            var y1 = (svgRect.top - containerRect.top) + padding + (chartHeight - y1Offset);
+            var y2 = (svgRect.top - containerRect.top) + padding + (chartHeight - y2Offset);
+
+            console.log('y1:', y1, 'y2:', y2);
+
+            var html = '';
+            html += '<svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15;">';
+            
+            html += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y1 + '" stroke="#10b981" stroke-width="2" stroke-dasharray="5,5"/>';
+            html += '<line x1="' + x2 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#10b981" stroke-width="2" stroke-dasharray="5,5"/>';
+            
+            html += '</svg>';
+
+            html += '<div class="measure-point" style="left: ' + x1 + 'px; top: ' + y1 + 'px;"></div>';
+            html += '<div class="measure-point" style="left: ' + x2 + 'px; top: ' + y2 + 'px;"></div>';
+
+            var infoX = (x1 + x2) / 2;
+            var infoY = Math.min(y1, y2) - 60;
+            if (infoY < 10) infoY = Math.max(y1, y2) + 30;
+
+            console.log('Info box position - x:', infoX, 'y:', infoY);
+
+            html += '<div class="measure-info" style="left: ' + infoX + 'px; top: ' + infoY + 'px; transform: translateX(-50%);" id="measureInfoBox">';
+            html += '<div><span class="measure-info-label">Distance:</span><span class="measure-info-value">' + distanceValue.toFixed(2) + ' ' + distanceUnit + '</span></div>';
+            html += '<div><span class="measure-info-label">Elev Change:</span><span class="measure-info-value">' + elevDiff.toFixed(2) + ' ' + getElevationUnit() + '</span></div>';
+            html += '<div><span class="measure-info-label">Points:</span><span class="measure-info-value">' + Math.abs(measureEnd - measureStart) + '</span></div>';
+            html += '</div>';
+
+            console.log('Setting measure overlay HTML');
+            console.log('HTML length:', html.length);
+            document.getElementById('measureOverlay').innerHTML = html;
+            console.log('Measure overlay innerHTML set');
+            
+            setTimeout(function() {
+                var infoBox = document.getElementById('measureInfoBox');
+                console.log('Info box element:', infoBox);
+                if (infoBox) {
+                    var rect = infoBox.getBoundingClientRect();
+                    console.log('Info box rect:', rect);
+                    
+                    var newX = infoX;
+                    var newY = infoY;
+                    
+                    if (rect.left < containerRect.left) {
+                        newX = (containerRect.left - (rect.left - infoX)) + 10;
+                        console.log('Adjusting X - too far left, new X:', newX);
+                    }
+                    if (rect.right > containerRect.right) {
+                        newX = infoX - (rect.right - containerRect.right) - 10;
+                        console.log('Adjusting X - too far right, new X:', newX);
+                    }
+                    if (rect.top < containerRect.top) {
+                        newY = (containerRect.top - (rect.top - infoY)) + 10;
+                        console.log('Adjusting Y - too far up, new Y:', newY);
+                    }
+                    if (rect.bottom > containerRect.bottom) {
+                        newY = infoY - (rect.bottom - containerRect.bottom) - 10;
+                        console.log('Adjusting Y - too far down, new Y:', newY);
+                    }
+                    
+                    if (newX !== infoX || newY !== infoY) {
+                        console.log('Adjusting info box position from', infoX, infoY, 'to:', newX, newY);
+                        infoBox.style.left = newX + 'px';
+                        infoBox.style.top = newY + 'px';
+                    }
+                } else {
+                    console.log('ERROR: measureInfoBox not found in DOM');
+                }
+            }, 10);
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').classList.remove('active');
+            document.getElementById('lineContextMenu').classList.remove('active');
+        }
+
+        function handleChartLeave() {
+            if (!isSelecting) {
+                hoveredIndex = null;
+                renderChart();
+                updatePointInfo();
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#contextMenu') && !e.target.closest('#lineContextMenu')) {
+                hideContextMenu();
+            }
+            if (!e.target.closest('.chart-container') && !e.target.closest('#contextMenu')) {
+                clearMeasure();
+                clearMapSelection();
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                clearMeasure();
+                clearMapSelection();
+            }
+        });
+
+        window.onload = function() {
+            initMap();
+            var svg = document.getElementById('chartSvg');
+            svg.addEventListener('mousedown', handleChartMouseDown);
+            svg.addEventListener('mousemove', handleChartMouseMove);
+            svg.addEventListener('mouseup', handleChartMouseUp);
+            svg.addEventListener('contextmenu', handleChartContextMenu);
+            svg.addEventListener('mouseleave', handleChartLeave);
+            
+            window.addEventListener('resize', function() {
+                var activeLine = getActiveLine();
+                if (activeLine) renderChart();
+            });
+        };
+    </script>
+</body>
+</html>
