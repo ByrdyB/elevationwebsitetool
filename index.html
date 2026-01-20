@@ -30,6 +30,11 @@
                 grid-template-rows: 1fr 250px auto auto;
                 height: auto;
                 min-height: 100vh;
+                overflow-y: auto;
+            }
+            body {
+                overflow-y: auto;
+                height: auto;
             }
         }
         .left-toolbar {
@@ -373,6 +378,15 @@
             background: #fef2f2;
             color: #dc2626;
         }
+        @media (max-width: 768px) {
+            .context-menu-item {
+                padding: 16px 20px;
+                font-size: 16px;
+            }
+            .context-menu {
+                min-width: 200px;
+            }
+        }
         .selection-overlay {
             position: absolute;
             background: rgba(37, 99, 235, 0.3);
@@ -619,6 +633,10 @@
         var isSelecting = false;
         var isDragging = false;
         var lineIdCounter = 0;
+        var touchStartTime = 0;
+        var touchStartX = 0;
+        var longPressTimer = null;
+        var isMobile = window.innerWidth <= 768;
         var contextLineId = null;
         var measureMode = false;
         var measureStart = null;
@@ -1451,6 +1469,128 @@
                 updatePointInfo();
             }
         }
+        
+        function handleTouchStart(e) {
+            if (!isMobile) return;
+            
+            touchStartTime = Date.now();
+            var touch = e.touches[0];
+            touchStartX = touch.clientX;
+            var index = getIndexFromX(touch.clientX);
+            
+            longPressTimer = setTimeout(function() {
+                console.log('Long press detected - starting selection');
+                isSelecting = true;
+                isDragging = false;
+                selectionStart = index;
+                selectionEnd = index;
+                navigator.vibrate && navigator.vibrate(50);
+            }, 500);
+            
+            e.preventDefault();
+        }
+        
+        function handleTouchMove(e) {
+            if (!isMobile) return;
+            
+            var touch = e.touches[0];
+            var index = getIndexFromX(touch.clientX);
+            
+            if (Math.abs(touch.clientX - touchStartX) > 10 && longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            
+            if (isSelecting) {
+                isDragging = true;
+                selectionEnd = index;
+                updateSelection();
+                e.preventDefault();
+            } else {
+                var activeLine = getActiveLine();
+                if (activeLine && index >= 0 && index < activeLine.data.length) {
+                    hoveredIndex = index;
+                    updateMarkerPosition(index);
+                    renderChart();
+                    updatePointInfo();
+                }
+            }
+        }
+        
+        function handleTouchEnd(e) {
+            if (!isMobile) return;
+            
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            
+            var touchDuration = Date.now() - touchStartTime;
+            var activeLine = getActiveLine();
+            if (!activeLine) return;
+            
+            if (isSelecting) {
+                if (selectionStart !== null && selectionEnd !== null && Math.abs(selectionEnd - selectionStart) > 0) {
+                    console.log('Selection complete, tap inside to show menu');
+                } else {
+                    isSelecting = false;
+                    selectionStart = null;
+                    selectionEnd = null;
+                    hideSelection();
+                    clearMapSelection();
+                }
+            } else if (touchDuration < 500) {
+                var touch = e.changedTouches[0];
+                
+                if (selectionStart !== null && selectionEnd !== null) {
+                    var overlay = document.getElementById('selectionOverlay');
+                    var rect = overlay.getBoundingClientRect();
+                    if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+                        touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+                        showContextMenuAtTouch(touch);
+                    } else {
+                        selectionStart = null;
+                        selectionEnd = null;
+                        hideSelection();
+                        clearMapSelection();
+                    }
+                } else {
+                    var index = getIndexFromX(touch.clientX);
+                    selectedIndex = index;
+                    hoveredIndex = null;
+                    updateMarkerPosition(index);
+                    renderChart();
+                    updatePointInfo();
+                }
+            }
+            
+            isSelecting = false;
+            isDragging = false;
+        }
+        
+        function showContextMenuAtTouch(touch) {
+            var menu = document.getElementById('contextMenu');
+            var x = touch.clientX;
+            var y = touch.clientY;
+            
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+            menu.classList.add('active');
+            
+            var actualMenuRect = menu.getBoundingClientRect();
+            
+            if (actualMenuRect.right > window.innerWidth) {
+                x = window.innerWidth - actualMenuRect.width - 10;
+            }
+            if (actualMenuRect.bottom > window.innerHeight) {
+                y = window.innerHeight - actualMenuRect.height - 10;
+            }
+            if (x < 10) x = 10;
+            if (y < 10) y = 10;
+            
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+        }
 
         document.addEventListener('click', function(e) {
             if (!e.target.closest('#contextMenu') && !e.target.closest('#lineContextMenu')) {
@@ -1478,7 +1618,12 @@
             svg.addEventListener('contextmenu', handleChartContextMenu);
             svg.addEventListener('mouseleave', handleChartLeave);
             
+            svg.addEventListener('touchstart', handleTouchStart, { passive: false });
+            svg.addEventListener('touchmove', handleTouchMove, { passive: false });
+            svg.addEventListener('touchend', handleTouchEnd, { passive: false });
+            
             window.addEventListener('resize', function() {
+                isMobile = window.innerWidth <= 768;
                 var activeLine = getActiveLine();
                 if (activeLine) renderChart();
             });
