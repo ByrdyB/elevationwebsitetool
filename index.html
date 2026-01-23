@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KML Elevation Viewer</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * {
             margin: 0;
@@ -111,7 +112,7 @@
             grid-row: 2;
             background: white;
             border-top: 1px solid #e5e7eb;
-            padding: 8px;
+            padding: 4px;
             overflow: hidden;
             position: relative;
             user-select: none;
@@ -453,6 +454,14 @@
             color: #9ca3af;
             max-width: 400px;
         }
+        .empty-state-link {
+            color: #2563eb;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .empty-state-link:hover {
+            color: #1d4ed8;
+        }
         .empty-state-small {
             font-size: 13px;
             color: #9ca3af;
@@ -575,7 +584,7 @@
         <div class="chart-container">
             <div id="chartEmptyState" class="empty-state">
                 <div class="empty-state-title">Elevation Profile</div>
-                <div class="empty-state-text">Your elevation data will be displayed here. Upload a KML file using the button in the top left to get started.</div>
+                <div class="empty-state-text">Your elevation data will be displayed here. Upload a KML file using the button in the top left to get started, or <span class="empty-state-link" onclick="loadDemo()">click here for a demo</span>.</div>
             </div>
             <svg id="chartSvg" width="100%" height="100%" style="cursor: crosshair;"></svg>
             <div id="selectionOverlay" class="selection-overlay"></div>
@@ -621,6 +630,7 @@
         var marker;
         var polylines = {};
         var selectionPolyline = null;
+        var activeLine = null;
         var lines = [];
         var activeLineId = null;
         var inputUnits = 'feet';
@@ -643,11 +653,21 @@
         var measureEnd = null;
 
         function initMap() {
-            map = new google.maps.Map(document.getElementById('map'), {
-                center: { lat: 0, lng: 0 },
+            map = L.map('map', {
+                center: [0, 0],
                 zoom: 2,
-                mapTypeId: 'satellite'
+                attributionControl: false
             });
+            
+            L.control.attribution({
+                position: 'bottomleft',
+                prefix: '<a href="https://leafletjs.com" target="_blank">Leaflet</a>'
+            }).addTo(map);
+            
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '<a href="https://www.esri.com" target="_blank">Esri</a>',
+                maxZoom: 19
+            }).addTo(map);
         }
 
         function toggleLeftToolbar() {
@@ -727,6 +747,50 @@
                 document.getElementById('unitsModal').classList.add('active');
             };
             reader.readAsText(file);
+        }
+        
+        function loadDemo() {
+            console.log('Loading demo file...');
+            fetch('demo.kml')
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('Demo file not found');
+                    }
+                    return response.text();
+                })
+                .then(function(kmlText) {
+                    console.log('Demo file loaded successfully');
+                    inputUnits = 'feet';
+                    
+                    var points = parseKML(kmlText);
+                    if (points && points.length > 0) {
+                        var lineId = 'line_' + lineIdCounter++;
+                        lines.push({
+                            id: lineId,
+                            name: 'Demo Line',
+                            data: points
+                        });
+                        activeLineId = lineId;
+                        
+                        document.getElementById('status').textContent = 'Loaded ' + points.length + ' points (Demo)';
+                        document.getElementById('unitsToggle').classList.add('visible');
+                        document.getElementById('chartEmptyState').style.display = 'none';
+                        
+                        updateLinesList();
+                        updateMap();
+                        renderChart();
+                        if (points.length > 0) {
+                            selectedIndex = 0;
+                            updatePointInfo();
+                        }
+                    } else {
+                        alert('Could not parse demo file.');
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error loading demo:', error);
+                    alert('Demo file not found. Please make sure demo.kml is in the same directory as this HTML file.');
+                });
         }
 
         function selectInputUnits(units) {
@@ -870,46 +934,38 @@
             if (!map) return;
 
             Object.keys(polylines).forEach(function(key) {
-                polylines[key].setMap(null);
+                map.removeLayer(polylines[key]);
             });
             polylines = {};
 
             if (marker) {
-                marker.setMap(null);
+                map.removeLayer(marker);
                 marker = null;
             }
 
             var activeLine = getActiveLine();
             if (!activeLine) return;
 
-            var bounds = new google.maps.LatLngBounds();
+            var bounds = L.latLngBounds();
             
-            var path = activeLine.data.map(function(p) { return { lat: p.lat, lng: p.lng }; });
-            var polyline = new google.maps.Polyline({
-                path: path,
-                geodesic: true,
-                strokeColor: '#FF0000',
-                strokeOpacity: 1.0,
-                strokeWeight: 3
-            });
-            polyline.setMap(map);
+            var path = activeLine.data.map(function(p) { return [p.lat, p.lng]; });
+            var polyline = L.polyline(path, {
+                color: '#FF0000',
+                weight: 3,
+                opacity: 1.0
+            }).addTo(map);
             polylines[activeLine.id] = polyline;
             
             path.forEach(function(p) { bounds.extend(p); });
 
             if (activeLine.data.length > 0) {
-                marker = new google.maps.Marker({
-                    map: map,
-                    position: path[0],
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: '#4CAF50',
-                        fillOpacity: 1,
-                        strokeColor: '#fff',
-                        strokeWeight: 2
-                    }
-                });
+                marker = L.circleMarker([activeLine.data[0].lat, activeLine.data[0].lng], {
+                    radius: 8,
+                    fillColor: '#4CAF50',
+                    fillOpacity: 1,
+                    color: '#fff',
+                    weight: 2
+                }).addTo(map);
             }
 
             map.fitBounds(bounds);
@@ -920,7 +976,7 @@
             var activeLine = getActiveLine();
             if (!activeLine || index === null || index >= activeLine.data.length) return;
             var point = activeLine.data[index];
-            marker.setPosition({ lat: point.lat, lng: point.lng });
+            marker.setLatLng([point.lat, point.lng]);
         }
 
         function convertElevation(elevation) {
@@ -1190,7 +1246,7 @@
 
         function updateMapSelection(startIdx, endIdx) {
             if (selectionPolyline) {
-                selectionPolyline.setMap(null);
+                map.removeLayer(selectionPolyline);
                 selectionPolyline = null;
             }
 
@@ -1198,17 +1254,13 @@
             if (!activeLine || startIdx === null || endIdx === null) return;
 
             var selectedSegment = activeLine.data.slice(startIdx, endIdx + 1);
-            var path = selectedSegment.map(function(p) { return { lat: p.lat, lng: p.lng }; });
+            var path = selectedSegment.map(function(p) { return [p.lat, p.lng]; });
             
-            selectionPolyline = new google.maps.Polyline({
-                path: path,
-                geodesic: true,
-                strokeColor: '#2563eb',
-                strokeOpacity: 1.0,
-                strokeWeight: 5,
-                zIndex: 1000
-            });
-            selectionPolyline.setMap(map);
+            selectionPolyline = L.polyline(path, {
+                color: '#2563eb',
+                weight: 5,
+                opacity: 1.0
+            }).addTo(map);
         }
 
         function hideSelection() {
@@ -1220,7 +1272,7 @@
         
         function clearMapSelection() {
             if (selectionPolyline) {
-                selectionPolyline.setMap(null);
+                map.removeLayer(selectionPolyline);
                 selectionPolyline = null;
             }
         }
