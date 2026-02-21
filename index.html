@@ -462,6 +462,23 @@
         .empty-state-link:hover {
             color: #1d4ed8;
         }
+        .demo-btn {
+            margin-top: 16px;
+            padding: 10px 24px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            pointer-events: all;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+            transition: background 0.15s;
+        }
+        .demo-btn:hover {
+            background: #1d4ed8;
+        }
         .empty-state-small {
             font-size: 13px;
             color: #9ca3af;
@@ -584,9 +601,10 @@
         <div class="chart-container">
             <div id="chartEmptyState" class="empty-state">
                 <div class="empty-state-title">Elevation Profile</div>
-                <div class="empty-state-text">Your elevation data will be displayed here. Upload a KML file using the button in the top left to get started, or <span class="empty-state-link" onclick="loadDemo()">click here for a demo</span>.</div>
+                <div class="empty-state-text">Your elevation data will be displayed here. Upload a KML file using the button in the top left to get started.</div>
+                <button class="demo-btn" onclick="loadDemo()">Load Demo</button>
             </div>
-            <svg id="chartSvg" width="100%" height="100%" style="cursor: crosshair;"></svg>
+            <svg id="chartSvg" width="100%" height="100%" style="cursor: default;"></svg>
             <div id="selectionOverlay" class="selection-overlay"></div>
             <div id="measureOverlay"></div>
         </div>
@@ -749,47 +767,61 @@
             reader.readAsText(file);
         }
         
+        function processDemo(kmlText) {
+            inputUnits = 'feet';
+            var points = parseKML(kmlText);
+            if (points && points.length > 0) {
+                var lineId = 'line_' + lineIdCounter++;
+                lines.push({
+                    id: lineId,
+                    name: 'Demo Line',
+                    data: points
+                });
+                activeLineId = lineId;
+
+                document.getElementById('status').textContent = 'Loaded ' + points.length + ' points (Demo)';
+                document.getElementById('unitsToggle').classList.add('visible');
+                document.getElementById('chartEmptyState').style.display = 'none';
+                document.getElementById('chartSvg').style.cursor = 'crosshair';
+
+                updateLinesList();
+                updateMap();
+                renderChart();
+                if (points.length > 0) {
+                    selectedIndex = 0;
+                    updatePointInfo();
+                }
+            } else {
+                alert('Could not parse demo file.');
+            }
+        }
+
         function loadDemo() {
-            console.log('Loading demo file...');
+            // Try fetch first (works on GitHub Pages and any HTTP server).
+            // If that fails (e.g. local file:// protocol), fall back to a
+            // file picker so the user can manually select demo.kml.
             fetch('demo.kml')
                 .then(function(response) {
-                    if (!response.ok) {
-                        throw new Error('Demo file not found');
-                    }
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
                     return response.text();
                 })
                 .then(function(kmlText) {
-                    console.log('Demo file loaded successfully');
-                    inputUnits = 'feet';
-                    
-                    var points = parseKML(kmlText);
-                    if (points && points.length > 0) {
-                        var lineId = 'line_' + lineIdCounter++;
-                        lines.push({
-                            id: lineId,
-                            name: 'Demo Line',
-                            data: points
-                        });
-                        activeLineId = lineId;
-                        
-                        document.getElementById('status').textContent = 'Loaded ' + points.length + ' points (Demo)';
-                        document.getElementById('unitsToggle').classList.add('visible');
-                        document.getElementById('chartEmptyState').style.display = 'none';
-                        
-                        updateLinesList();
-                        updateMap();
-                        renderChart();
-                        if (points.length > 0) {
-                            selectedIndex = 0;
-                            updatePointInfo();
-                        }
-                    } else {
-                        alert('Could not parse demo file.');
-                    }
+                    processDemo(kmlText);
                 })
-                .catch(function(error) {
-                    console.error('Error loading demo:', error);
-                    alert('Demo file not found. Please make sure demo.kml is in the same directory as this HTML file.');
+                .catch(function() {
+                    var input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.kml';
+                    input.onchange = function(e) {
+                        var file = e.target.files[0];
+                        if (!file) return;
+                        var reader = new FileReader();
+                        reader.onload = function(ev) {
+                            processDemo(ev.target.result);
+                        };
+                        reader.readAsText(file);
+                    };
+                    input.click();
                 });
         }
 
@@ -810,6 +842,7 @@
                 document.getElementById('status').textContent = 'Loaded ' + points.length + ' points';
                 document.getElementById('unitsToggle').classList.add('visible');
                 document.getElementById('chartEmptyState').style.display = 'none';
+                document.getElementById('chartSvg').style.cursor = 'crosshair';
                 
                 updateLinesList();
                 updateMap();
